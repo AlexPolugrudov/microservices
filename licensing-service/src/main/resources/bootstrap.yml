@@ -1,0 +1,82 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: licensing-service
+  profiles:
+    active: dev
+
+  cloud:
+    config:
+      uri: http://localhost:8071
+
+resilience4j:
+# Размыкатель цепи
+  circuitbreaker:
+    instances:
+      # Конфигурация службы лицензий (имя, данное размыкателю цепи в аннотации)
+      instanceService:
+        # Следует ли экспортировать конфигурацию через конечную точку health
+        register-health-indicator: true
+        # Размер кольцевого буфера для замкнутого состояния
+        ring-buffer-size-in-closed-state: 5
+        # Размер кольцовего буфера для полуоткрытого состояния
+        ring-buffer-size-in-half-open-state: 3
+        # Продолжительность ожидания в разомнкутом состоянии
+        wait-duration-in-open-state: 10s
+        # Порог частоты отказов в процентах
+        failure-rate-threshold: 50
+        # Исключения, которые должны расцениваться как сбои
+        record-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.client.ResourceAccessException
+      # Конфигурация слубы организации
+      organizationService:
+        register-health-indicator: true
+        ring-buffer-size-in-closed-state: 6
+        ring-buffer-size-in-half-open-state: 4
+        wait-duration-in-open-state: 20s
+        failure-rate-threshold: 60
+# Герметичный отсек
+  # Через семафоры(по умолчанию)
+  bulkhead:
+    instances:
+      bulkheadLicenseService:
+        # Макс-ая продолж-ть блокировки потока
+        max-wait-duration: 10ms
+        # Макс-ое кол-во одновременных вызовов
+        max-concurrent-calls: 20
+  # Через пул потоков
+  thread-pool-bulkhead:
+    instances:
+      bulkheadLicenseService:
+        # Макс-ое  кол-во потоков в пуле
+        max-thread-pool-size: 1
+        # Размер основного пула потоков
+        core-thread-pool-size: 1
+        # Вместимость очереди
+        queue-capacity: 1
+        # Макс-ое врме я, в течении которого простаивющие потоки ждут новых заданий перед завершением
+        keep-alive-duration: 20ms
+# Шаблон повторных попыток
+  retry:
+    instances:
+      retryLicenseService:
+        # Макс-ое кол-во повторных попыток
+        max-retry-attempts: 5
+        wait-duration: 10000
+        retry-exceptions:
+          - java.util.concurrent.TimeoutException
+# Ограничитель частоты
+  ratelimiter:
+    instances:
+      licenseService:
+        # Время, в течении которого поток ожидает разрешения
+        timeout-duration: 100ms
+        # Период обновления ограничений
+        limit-refresh-period: 5000
+        # Кол-в разрешений, доступных в течение периода обновления ограничений
+        limit-for-period: 5
